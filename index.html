@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>北港義民廟 電子書</title>
+<link rel="stylesheet" href="lib/stPageFlip.css">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;
+  background:radial-gradient(circle at 50% 25%,#3a3f4a,#15171c 80%);
+  color:#eee;overflow:hidden;user-select:none;
+}
+/* 舞台：置中、留出上下工具列空間 */
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:64px 10px}
+/* 翻頁書容器 */
+#book{width:min(94vw,1000px);margin:0 auto;filter:drop-shadow(0 22px 40px rgba(0,0,0,.55))}
+/* StPageFlip 產生的書頁圖片，鋪滿整頁 */
+#book img{width:100%;height:100%;display:block}
+/* 上下工具列 */
+.bar{position:fixed;left:0;right:0;z-index:20;display:flex;align-items:center;
+  padding:12px 18px;transition:opacity .3s}
+#topbar{top:0;justify-content:space-between;background:linear-gradient(#000a,transparent)}
+#botbar{bottom:0;justify-content:center;gap:18px;background:linear-gradient(transparent,#000a)}
+.title{font-size:15px;font-weight:700;color:#fff;opacity:.9;letter-spacing:1px}
+.btn{background:rgba(255,255,255,.16);border:none;color:#fff;font-size:20px;
+  width:46px;height:46px;border-radius:50%;cursor:pointer;display:flex;align-items:center;
+  justify-content:center;transition:background .2s}
+.btn:active{transform:scale(.92)}
+.btn:hover{background:rgba(255,255,255,.3)}
+#counter{font-size:15px;color:#fff;min-width:70px;text-align:center;font-variant-numeric:tabular-nums}
+body.idle .bar{opacity:0;pointer-events:none}
+/* 載入中 */
+#spin{position:fixed;top:50%;left:50%;width:46px;height:46px;margin:-23px;z-index:5;
+  border:4px solid rgba(255,255,255,.2);border-top-color:#e0a53a;border-radius:50%;
+  animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#hint{position:fixed;bottom:70px;left:0;right:0;text-align:center;color:#cbb98f;font-size:13px;z-index:15;opacity:.85}
+</style>
+</head>
+<body>
+
+  <div id="spin"></div>
+  <div id="stage"><div id="book"></div></div>
+
+  <div class="bar" id="topbar">
+    <span class="title" id="bookTitle">北港義民廟 電子書</span>
+    <button class="btn" id="fsBtn" title="全螢幕">⛶</button>
+  </div>
+  <div class="bar" id="botbar">
+    <button class="btn" id="prevBtn" title="上一頁">‹</button>
+    <span id="counter">– / –</span>
+    <button class="btn" id="nextBtn" title="下一頁">›</button>
+  </div>
+  <div id="hint">👆 點書頁邊緣、或用手指拖曳，就能像真書一樣翻頁</div>
+
+  <!-- 翻頁引擎（已下載到本機 lib/，不走 CDN） -->
+  <script src="lib/page-flip.browser.js"></script>
+<script>
+"use strict";
+/* =========================================================
+   北港義民廟 電子書（真實翻頁書）
+   翻頁引擎：StPageFlip（已內建於 lib/，零外部相依）
+   手機：單頁 + 真實捲頁；電腦：跨兩頁像翻開的真書。
+
+   【怎麼換成你的書】
+   1. 把每頁圖片放進 images/，命名 page-01.jpg、page-02.jpg…
+   2. 改下面 CONFIG 的 TOTAL（總頁數）、EXT（副檔名）、TITLE（書名）。
+   （圖還沒放時，會自動用「第 N 頁」的示意頁，放圖後就替換。）
+   ========================================================= */
+var CONFIG = {
+  TITLE : "北港義民廟 電子書",
+  PREFIX: "images/page-",
+  EXT   : "jpg",
+  PAD   : 2,          // 檔名補零位數：2 → page-01
+  TOTAL : 12          // 總頁數（改成你的實際頁數）
+};
+/* 進階：想手動指定每頁圖片就填這個陣列（非空則優先用它）。
+   例：PAGES = ["images/封面.jpg","images/p1.jpg"]; */
+var PAGES = [];
+
+/* ---- 依 CONFIG 產生圖片清單 ---- */
+function buildPages(){
+  if(PAGES.length) return PAGES.slice();
+  var a=[];
+  for(var i=1;i<=CONFIG.TOTAL;i++){
+    var n=String(i);
+    while(CONFIG.PAD>0 && n.length<CONFIG.PAD) n="0"+n;
+    a.push(CONFIG.PREFIX+n+"."+CONFIG.EXT);
+  }
+  return a;
+}
+
+/* ---- 產生「第 N 頁」示意圖（圖片還沒放時用）---- */
+function placeholder(i,w,h){
+  var c=document.createElement("canvas"); c.width=w; c.height=h;
+  var x=c.getContext("2d");
+  var g=x.createLinearGradient(0,0,0,h); g.addColorStop(0,"#fffdf7"); g.addColorStop(1,"#f1e8d5");
+  x.fillStyle=g; x.fillRect(0,0,w,h);
+  x.strokeStyle="#e0cfa8"; x.lineWidth=6; x.strokeRect(14,14,w-28,h-28);
+  x.fillStyle="#c9a24b"; x.textAlign="center";
+  x.font="bold "+Math.round(w*0.12)+"px 'Noto Sans TC',sans-serif";
+  x.fillText("第 "+(i+1)+" 頁", w/2, h*0.46);
+  x.fillStyle="#b7a58a"; x.font=Math.round(w*0.045)+"px 'Noto Sans TC',sans-serif";
+  x.fillText("放入 "+CONFIG.PREFIX+(i+1)+"."+CONFIG.EXT, w/2, h*0.56);
+  return c.toDataURL("image/jpeg",0.9);
+}
+
+/* ---- 探測每張圖是否存在，並取得第一張的長寬比 ---- */
+function probe(url){
+  return new Promise(function(res){
+    var im=new Image();
+    im.onload=function(){ res({url:url,ok:true,w:im.naturalWidth,h:im.naturalHeight}); };
+    im.onerror=function(){ res({url:url,ok:false}); };
+    im.src=url;
+  });
+}
+
+var pf=null;
+var $cnt=document.getElementById("counter");
+document.getElementById("bookTitle").textContent=CONFIG.TITLE;
+
+function updateUI(){
+  if(!pf) return;
+  var cur=pf.getCurrentPageIndex()+1, tot=pf.getPageCount();
+  $cnt.textContent=cur+" / "+tot;
+}
+
+/* ====== 啟動 ====== */
+(function init(){
+  var list=buildPages();
+  Promise.all(list.map(probe)).then(function(r){
+    // 決定頁面長寬比（用第一張成功的圖；沒有就用直式書比例）
+    var first=r.find(function(o){return o.ok;});
+    var aspect = first ? (first.w/first.h) : 0.72;
+    var H=1000, Wp=Math.round(H*aspect);
+    // 組出最終圖片清單（缺圖用示意頁補上）
+    var urls=r.map(function(o,i){ return o.ok?o.url:placeholder(i,Wp,H); });
+
+    document.getElementById("spin").style.display="none";
+    // 建立翻頁書
+    pf=new St.PageFlip(document.getElementById("book"),{
+      width:Wp, height:H,
+      size:"stretch",              // 自動縮放填滿容器
+      minWidth:280, maxWidth:2000,
+      minHeight:380, maxHeight:2600,
+      drawShadow:true, maxShadowOpacity:0.5,
+      showCover:true,              // 第一頁當封面（單獨顯示）
+      usePortrait:true,            // 窄螢幕（手機）自動變單頁
+      mobileScrollSupport:false,
+      flippingTime:800,            // 翻頁速度(ms)
+      autoSize:true
+    });
+    pf.loadFromImages(urls);
+    pf.on("flip", updateUI);
+    pf.on("changeState", updateUI);
+    setTimeout(updateUI,60);
+  });
+})();
+
+/* ====== 控制項 ====== */
+document.getElementById("nextBtn").addEventListener("click",function(){ pf&&pf.flipNext(); });
+document.getElementById("prevBtn").addEventListener("click",function(){ pf&&pf.flipPrev(); });
+document.addEventListener("keydown",function(e){
+  if(!pf) return;
+  if(e.key==="ArrowRight"||e.key===" "){ e.preventDefault(); pf.flipNext(); }
+  else if(e.key==="ArrowLeft"){ e.preventDefault(); pf.flipPrev(); }
+});
+document.getElementById("fsBtn").addEventListener("click",function(){
+  if(!document.fullscreenElement){ document.documentElement.requestFullscreen&&document.documentElement.requestFullscreen(); }
+  else{ document.exitFullscreen&&document.exitFullscreen(); }
+});
+
+/* 首次翻頁後隱藏提示 */
+var hintEl=document.getElementById("hint"), hid=false;
+function hideHint(){ if(!hid){ hid=true; hintEl.style.transition="opacity .5s"; hintEl.style.opacity=0; } }
+document.addEventListener("click",hideHint); document.addEventListener("touchstart",hideHint,{passive:true});
+
+/* 閒置 3 秒隱藏工具列 */
+var t; function poke(){ document.body.classList.remove("idle"); clearTimeout(t);
+  t=setTimeout(function(){ document.body.classList.add("idle"); },3000); }
+["mousemove","touchstart","keydown","click"].forEach(function(ev){ document.addEventListener(ev,poke,{passive:true}); });
+poke();
+</script>
+</body>
+</html>
